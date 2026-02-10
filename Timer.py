@@ -5,12 +5,16 @@ import threading
 import pygame
 import os
 import json
+from datetime import datetime
+import openpyxl
+from openpyxl import Workbook
+import sys
 
 class IntervalTimer:
     def __init__(self, root):
         self.root = root
         self.root.title("Interval Timer v2.0")
-        self.root.geometry("600x580")
+        self.root.geometry("600x620")
         self.root.resizable(False, False)
         
         # Initialize pygame mixer with minimal CPU usage
@@ -33,6 +37,9 @@ class IntervalTimer:
         self.interval_count = 0
         self.break_count = 0
         self.config_file = "timer_config.json"
+        self.excel_path = None
+        self.session_start_time = None
+        self.session_end_time = None
         
         # Load saved ringtone path
         self.load_config()
@@ -139,7 +146,7 @@ class IntervalTimer:
         
         # Control Buttons
         button_frame = tk.Frame(root)
-        button_frame.pack(pady=15)
+        button_frame.pack(pady=10)
         
         self.start_btn = tk.Button(button_frame, text="Start", font=("Arial", 11, "bold"), 
                                    bg="#4CAF50", fg="white", width=7, command=self.start_timer)
@@ -157,6 +164,14 @@ class IntervalTimer:
                                 bg="#f44336", fg="white", width=7, command=self.end_timer, state=tk.DISABLED)
         self.end_btn.grid(row=0, column=3, padx=4)
         
+        # Open Excel Button
+        excel_button_frame = tk.Frame(root)
+        excel_button_frame.pack(pady=5)
+        
+        self.open_excel_btn = tk.Button(excel_button_frame, text="📊 Open Study Log", font=("Arial", 10), 
+                                        bg="#607D8B", fg="white", width=20, command=self.open_excel_file)
+        self.open_excel_btn.pack()
+        
         # Next Event Info
         self.next_event_label = tk.Label(root, text="", font=("Arial", 9), fg="blue")
         self.next_event_label.pack(pady=5)
@@ -168,6 +183,7 @@ class IntervalTimer:
                     config = json.load(f)
                     self.work_ringtone_path = config.get('work_ringtone_path')
                     self.break_ringtone_path = config.get('break_ringtone_path')
+                    self.excel_path = config.get('excel_path')
         except:
             pass
     
@@ -175,7 +191,8 @@ class IntervalTimer:
         try:
             config = {
                 'work_ringtone_path': self.work_ringtone_path,
-                'break_ringtone_path': self.break_ringtone_path
+                'break_ringtone_path': self.break_ringtone_path,
+                'excel_path': self.excel_path
             }
             with open(self.config_file, 'w') as f:
                 json.dump(config, f)
@@ -241,6 +258,7 @@ class IntervalTimer:
         self.in_break = False
         self.start_time = time.time()
         self.main_start_time = time.time()
+        self.session_start_time = datetime.now()  # Record system time
         self.elapsed = 0
         self.main_elapsed = 0
         self.total_pause_duration = 0
@@ -396,6 +414,11 @@ class IntervalTimer:
                 pass
     
     def end_timer(self):
+        # Record session end time
+        if self.running:
+            self.session_end_time = datetime.now()
+            self.save_session_to_excel()
+        
         self.running = False
         self.paused = False
         if self.work_sound:
@@ -414,6 +437,132 @@ class IntervalTimer:
         self.break_browse_btn.config(state=tk.NORMAL)
         self.next_event_label.config(text="")
         self.mode_label.config(text="READY", fg="black")
+        
+        # Reset counters and timers to zero
+        self.interval_count = 0
+        self.break_count = 0
+        self.interval_counter_label.config(text="0")
+        self.break_counter_label.config(text="0")
+        
+        # Reset all timers to zero
+        self.elapsed = 0
+        self.main_elapsed = 0
+        self.timer_label.config(text="00:00:00")
+        self.main_clock_label.config(text="00:00:00:00")
+    
+    def save_session_to_excel(self):
+        try:
+            # Check if excel path exists, if not ask user
+            if not self.excel_path or not os.path.exists(os.path.dirname(self.excel_path) if os.path.dirname(self.excel_path) else '.'):
+                save_path = filedialog.asksaveasfilename(
+                    title="Save Study Log Excel File",
+                    defaultextension=".xlsx",
+                    filetypes=[("Excel Files", "*.xlsx"), ("All Files", "*.*")],
+                    initialfile="study_log.xlsx"
+                )
+                if not save_path:
+                    return  # User cancelled
+                self.excel_path = save_path
+                self.save_config()
+            
+            # Create or load workbook
+            try:
+                if os.path.exists(self.excel_path):
+                    wb = openpyxl.load_workbook(self.excel_path)
+                    ws = wb.active
+                else:
+                    wb = Workbook()
+                    ws = wb.active
+                    # Create headers
+                    ws.append([
+                        "Date", "Start_Time", "End_Time", "Total_Run_Time", 
+                        "Session", "Session_Time", "Break", "Break_Time",
+                        "Over_All_Session_Time", "Over_All_Break_Time"
+                    ])
+            except PermissionError:
+                # File is open, ask user to choose different location
+                response = messagebox.askyesno(
+                    "File In Use",
+                    f"The file is currently open:\n{self.excel_path}\n\n"
+                    "Please close it and click 'Yes' to retry,\n"
+                    "or click 'No' to save to a different file."
+                )
+                if response:
+                    # Retry same file
+                    return self.save_session_to_excel()
+                else:
+                    # Ask for new location
+                    self.excel_path = None
+                    return self.save_session_to_excel()
+            
+            # Calculate data
+            date = self.session_start_time.strftime("%Y-%m-%d")
+            start_time = self.session_start_time.strftime("%H:%M:%S")
+            end_time = self.session_end_time.strftime("%H:%M:%S")
+            total_run_time = self.format_time(self.main_elapsed)
+            
+            session_count = self.interval_count
+            session_time = self.interval_count * self.interval_duration
+            break_count = self.break_count
+            break_time = self.break_count * self.break_duration_time
+            
+            overall_session_hours = session_time / 3600
+            overall_break_hours = break_time / 3600
+            
+            # Append row
+            ws.append([
+                date,
+                start_time,
+                end_time,
+                total_run_time,
+                session_count,
+                self.format_time(session_time),
+                break_count,
+                self.format_time(break_time),
+                overall_session_hours,  # Number format
+                overall_break_hours     # Number format
+            ])
+            
+            # Save workbook
+            try:
+                wb.save(self.excel_path)
+                messagebox.showinfo("Success", f"Session saved to:\n{self.excel_path}")
+            except PermissionError:
+                messagebox.showerror(
+                    "Cannot Save",
+                    f"The file is open in another program:\n{self.excel_path}\n\n"
+                    "Please close it and try pressing 'End' again."
+                )
+                return  # Don't reset if save failed
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save session:\n{str(e)}")
+            return  # Don't reset if save failed
+    
+    def open_excel_file(self):
+        """Open the Excel file in the default application"""
+        if self.excel_path and os.path.exists(self.excel_path):
+            try:
+                # Open file with default application
+                if os.name == 'nt':  # Windows
+                    os.startfile(self.excel_path)
+                elif os.name == 'posix':  # macOS and Linux
+                    import subprocess
+                    if sys.platform == 'darwin':  # macOS
+                        subprocess.call(('open', self.excel_path))
+                    else:  # Linux
+                        subprocess.call(('xdg-open', self.excel_path))
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not open file:\n{str(e)}")
+        else:
+            messagebox.showwarning("No File", "No study log file exists yet.\nComplete a session first!")
+    
+    def format_time(self, seconds):
+        """Format seconds to HH:MM:SS"""
+        hrs = int(seconds // 3600)
+        mins = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hrs:02d}:{mins:02d}:{secs:02d}"
 
 if __name__ == "__main__":
     root = tk.Tk()
