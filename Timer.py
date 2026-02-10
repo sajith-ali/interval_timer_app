@@ -301,9 +301,11 @@ class IntervalTimer:
                         self.last_alert_time = current_time
                         threading.Thread(target=self.play_ringtone, daemon=True).start()
                         
-                        # Bring window to front
-                        self.root.lift()
+                        # Bring window to front and restore if minimized
+                        self.root.deiconify()  # Restore if minimized
+                        self.root.lift()  # Bring to front
                         self.root.attributes('-topmost', True)
+                        self.root.focus_force()  # Force focus
                         self.root.after(100, lambda: self.root.attributes('-topmost', False))
                     
                     # Switch between work and break
