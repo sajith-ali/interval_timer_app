@@ -1,88 +1,153 @@
-#Version 1.30 - Optimized for Low CPU and Memory Usage
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import time
 import threading
 import pygame
 import os
+import json
 
 class IntervalTimer:
     def __init__(self, root):
         self.root = root
-        self.root.title("Interval Timer")
-        self.root.geometry("500x350")
+        self.root.title("Interval Timer v2.0")
+        self.root.geometry("600x500")
         self.root.resizable(False, False)
         
         # Initialize pygame mixer with minimal CPU usage
         pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=2048)
-        pygame.mixer.set_num_channels(1)  # Only need 1 audio channel
+        pygame.mixer.set_num_channels(1)
         
         self.running = False
         self.paused = False
+        self.in_break = False
         self.pause_start_time = 0
         self.total_pause_duration = 0
         self.start_time = 0
         self.elapsed = 0
+        self.main_elapsed = 0
         self.ringtone_path = None
-        self.sound = None  # Pre-loaded sound
+        self.sound = None
         self.last_alert_time = 0
+        self.interval_count = 0
+        self.break_count = 0
+        self.config_file = "timer_config.json"
         
-        # Timer Display
-        self.timer_label = tk.Label(root, text="00:00:00:00", font=("Arial", 36, "bold"))
-        self.timer_label.pack(pady=20)
+        # Load saved ringtone path
+        self.load_config()
         
-        # Interval Duration Setting
-        interval_frame = tk.Frame(root)
-        interval_frame.pack(pady=5)
+        # Main Clock Display (Total Runtime)
+        main_clock_frame = tk.Frame(root)
+        main_clock_frame.pack(pady=5)
+        tk.Label(main_clock_frame, text="Total Runtime:", font=("Arial", 10)).pack()
+        self.main_clock_label = tk.Label(main_clock_frame, text="00:00:00:00", font=("Arial", 24, "bold"), fg="blue")
+        self.main_clock_label.pack()
         
-        tk.Label(interval_frame, text="Alert Interval (seconds):", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
-        self.interval_entry = tk.Entry(interval_frame, width=10, font=("Arial", 10))
-        self.interval_entry.insert(0, "60")
+        # Timer Display (Interval/Break Timer)
+        timer_frame = tk.Frame(root)
+        timer_frame.pack(pady=5)
+        self.mode_label = tk.Label(timer_frame, text="WORK TIME", font=("Arial", 12, "bold"), fg="green")
+        self.mode_label.pack()
+        self.timer_label = tk.Label(timer_frame, text="00:00:00:00", font=("Arial", 32, "bold"))
+        self.timer_label.pack()
+        
+        # Counters Display
+        counter_frame = tk.Frame(root)
+        counter_frame.pack(pady=10)
+        
+        tk.Label(counter_frame, text="Work Intervals:", font=("Arial", 10)).grid(row=0, column=0, padx=10)
+        self.interval_counter_label = tk.Label(counter_frame, text="0", font=("Arial", 16, "bold"), fg="green")
+        self.interval_counter_label.grid(row=0, column=1, padx=10)
+        
+        tk.Label(counter_frame, text="Breaks Taken:", font=("Arial", 10)).grid(row=0, column=2, padx=10)
+        self.break_counter_label = tk.Label(counter_frame, text="0", font=("Arial", 16, "bold"), fg="orange")
+        self.break_counter_label.grid(row=0, column=3, padx=10)
+        
+        # Settings Frame
+        settings_frame = tk.LabelFrame(root, text="Settings", font=("Arial", 10, "bold"))
+        settings_frame.pack(pady=10, padx=20, fill="x")
+        
+        # Interval Duration
+        interval_frame = tk.Frame(settings_frame)
+        interval_frame.pack(pady=3)
+        tk.Label(interval_frame, text="Work Interval (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
+        self.interval_entry = tk.Entry(interval_frame, width=8, font=("Arial", 9))
+        self.interval_entry.insert(0, "1500")  # 25 minutes default
         self.interval_entry.pack(side=tk.LEFT, padx=5)
         
-        # Ringtone Duration Setting
-        duration_frame = tk.Frame(root)
-        duration_frame.pack(pady=5)
+        # Break Duration
+        break_frame = tk.Frame(settings_frame)
+        break_frame.pack(pady=3)
+        tk.Label(break_frame, text="Break Time (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
+        self.break_entry = tk.Entry(break_frame, width=8, font=("Arial", 9))
+        self.break_entry.insert(0, "300")  # 5 minutes default
+        self.break_entry.pack(side=tk.LEFT, padx=5)
         
-        tk.Label(duration_frame, text="Ringtone Duration (seconds):", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
-        self.duration_entry = tk.Entry(duration_frame, width=10, font=("Arial", 10))
+        # Ringtone Duration
+        duration_frame = tk.Frame(settings_frame)
+        duration_frame.pack(pady=3)
+        tk.Label(duration_frame, text="Ringtone Duration (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
+        self.duration_entry = tk.Entry(duration_frame, width=8, font=("Arial", 9))
         self.duration_entry.insert(0, "3")
         self.duration_entry.pack(side=tk.LEFT, padx=5)
         
         # Ringtone Selection
         ringtone_frame = tk.Frame(root)
-        ringtone_frame.pack(pady=10)
-        
+        ringtone_frame.pack(pady=5)
         self.ringtone_label = tk.Label(ringtone_frame, text="No ringtone selected", font=("Arial", 9), fg="gray")
         self.ringtone_label.pack()
+        self.browse_btn = tk.Button(ringtone_frame, text="Upload Ringtone", command=self.select_ringtone, font=("Arial", 9))
+        self.browse_btn.pack(pady=3)
         
-        self.browse_btn = tk.Button(ringtone_frame, text="Upload Ringtone", command=self.select_ringtone)
-        self.browse_btn.pack(pady=5)
+        # Load saved ringtone if exists
+        if self.ringtone_path and os.path.exists(self.ringtone_path):
+            filename = os.path.basename(self.ringtone_path)
+            self.ringtone_label.config(text=f"Loaded: {filename}", fg="green")
+            try:
+                self.sound = pygame.mixer.Sound(self.ringtone_path)
+            except:
+                self.ringtone_path = None
         
         # Control Buttons
         button_frame = tk.Frame(root)
-        button_frame.pack(pady=20)
+        button_frame.pack(pady=15)
         
-        self.start_btn = tk.Button(button_frame, text="Start", font=("Arial", 12, "bold"), 
-                                   bg="#4CAF50", fg="white", width=8, command=self.start_timer)
-        self.start_btn.grid(row=0, column=0, padx=5)
+        self.start_btn = tk.Button(button_frame, text="Start", font=("Arial", 11, "bold"), 
+                                   bg="#4CAF50", fg="white", width=7, command=self.start_timer)
+        self.start_btn.grid(row=0, column=0, padx=4)
         
-        self.pause_btn = tk.Button(button_frame, text="Pause", font=("Arial", 12, "bold"), 
-                                   bg="#FF9800", fg="white", width=8, command=self.pause_timer, state=tk.DISABLED)
-        self.pause_btn.grid(row=0, column=1, padx=5)
+        self.pause_btn = tk.Button(button_frame, text="Pause", font=("Arial", 11, "bold"), 
+                                   bg="#FF9800", fg="white", width=7, command=self.pause_timer, state=tk.DISABLED)
+        self.pause_btn.grid(row=0, column=1, padx=4)
         
-        self.resume_btn = tk.Button(button_frame, text="Resume", font=("Arial", 12, "bold"), 
-                                    bg="#2196F3", fg="white", width=8, command=self.resume_timer, state=tk.DISABLED)
-        self.resume_btn.grid(row=0, column=2, padx=5)
+        self.resume_btn = tk.Button(button_frame, text="Resume", font=("Arial", 11, "bold"), 
+                                    bg="#2196F3", fg="white", width=7, command=self.resume_timer, state=tk.DISABLED)
+        self.resume_btn.grid(row=0, column=2, padx=4)
         
-        self.end_btn = tk.Button(button_frame, text="End", font=("Arial", 12, "bold"), 
-                                bg="#f44336", fg="white", width=8, command=self.end_timer, state=tk.DISABLED)
-        self.end_btn.grid(row=0, column=3, padx=5)
+        self.end_btn = tk.Button(button_frame, text="End", font=("Arial", 11, "bold"), 
+                                bg="#f44336", fg="white", width=7, command=self.end_timer, state=tk.DISABLED)
+        self.end_btn.grid(row=0, column=3, padx=4)
         
-        # Next Alert Info
-        self.next_alert_label = tk.Label(root, text="", font=("Arial", 9), fg="blue")
-        self.next_alert_label.pack(pady=10)
-        
+        # Next Event Info
+        self.next_event_label = tk.Label(root, text="", font=("Arial", 9), fg="blue")
+        self.next_event_label.pack(pady=5)
+    
+    def load_config(self):
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    self.ringtone_path = config.get('ringtone_path')
+        except:
+            pass
+    
+    def save_config(self):
+        try:
+            config = {'ringtone_path': self.ringtone_path}
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f)
+        except:
+            pass
+    
     def select_ringtone(self):
         filepath = filedialog.askopenfilename(
             title="Select Ringtone",
@@ -92,9 +157,9 @@ class IntervalTimer:
             self.ringtone_path = filepath
             filename = os.path.basename(filepath)
             self.ringtone_label.config(text=f"Selected: {filename}", fg="green")
-            # Pre-load the sound to avoid delay
             try:
                 self.sound = pygame.mixer.Sound(filepath)
+                self.save_config()
             except Exception as e:
                 messagebox.showerror("Error", f"Could not load audio file: {e}")
                 self.ringtone_path = None
@@ -103,11 +168,12 @@ class IntervalTimer:
     def start_timer(self):
         try:
             interval = float(self.interval_entry.get())
+            break_time = float(self.break_entry.get())
             duration = float(self.duration_entry.get())
-            if interval <= 0 or duration <= 0:
+            if interval <= 0 or break_time < 0 or duration <= 0:
                 raise ValueError
         except ValueError:
-            messagebox.showerror("Invalid Input", "Please enter valid positive numbers for interval and duration.")
+            messagebox.showerror("Invalid Input", "Please enter valid positive numbers.")
             return
         
         if not self.ringtone_path:
@@ -116,18 +182,25 @@ class IntervalTimer:
         
         self.running = True
         self.paused = False
+        self.in_break = False
         self.start_time = time.time()
+        self.main_start_time = time.time()
         self.elapsed = 0
+        self.main_elapsed = 0
         self.total_pause_duration = 0
-        self.interval = interval
+        self.interval_duration = interval
+        self.break_duration = break_time
         self.ringtone_duration = duration
         self.next_alert = interval
+        self.interval_count = 0
+        self.break_count = 0
         
         self.start_btn.config(state=tk.DISABLED)
         self.pause_btn.config(state=tk.NORMAL)
         self.resume_btn.config(state=tk.DISABLED)
         self.end_btn.config(state=tk.NORMAL)
         self.interval_entry.config(state=tk.DISABLED)
+        self.break_entry.config(state=tk.DISABLED)
         self.duration_entry.config(state=tk.DISABLED)
         self.browse_btn.config(state=tk.DISABLED)
         
@@ -145,8 +218,8 @@ class IntervalTimer:
     def resume_timer(self):
         if self.running and self.paused:
             self.paused = False
-            # Add the pause duration to total
-            self.total_pause_duration += time.time() - self.pause_start_time
+            pause_duration = time.time() - self.pause_start_time
+            self.total_pause_duration += pause_duration
             self.pause_btn.config(state=tk.NORMAL)
             self.resume_btn.config(state=tk.DISABLED)
     
@@ -155,57 +228,98 @@ class IntervalTimer:
         while self.running:
             if not self.paused:
                 current_time = time.time()
+                self.main_elapsed = current_time - self.main_start_time - self.total_pause_duration
                 self.elapsed = current_time - self.start_time - self.total_pause_duration
                 
-                # Check if it's time to play ringtone (with precise timing)
-                if self.elapsed >= self.next_alert and (current_time - self.last_alert_time) > 0.5:
-                    self.last_alert_time = current_time
-                    threading.Thread(target=self.play_ringtone, daemon=True).start()
-                    self.next_alert += self.interval
+                # Check if current phase (work/break) is complete
+                current_limit = self.break_duration if self.in_break else self.interval_duration
                 
-                # Update display only 10 times per second to reduce CPU
+                if self.elapsed >= current_limit:
+                    # Play ringtone
+                    if current_time - self.last_alert_time > 0.5:
+                        self.last_alert_time = current_time
+                        threading.Thread(target=self.play_ringtone, daemon=True).start()
+                        
+                        # Bring window to front
+                        self.root.lift()
+                        self.root.attributes('-topmost', True)
+                        self.root.after(100, lambda: self.root.attributes('-topmost', False))
+                    
+                    # Switch between work and break
+                    if self.in_break:
+                        # Break finished, start work interval
+                        self.in_break = False
+                        self.break_count += 1
+                        self.mode_label.config(text="WORK TIME", fg="green")
+                    else:
+                        # Work finished, start break
+                        self.in_break = True
+                        self.interval_count += 1
+                        self.mode_label.config(text="BREAK TIME", fg="orange")
+                    
+                    # Reset timer for next phase
+                    self.start_time = time.time()
+                    self.total_pause_duration = 0
+                    self.elapsed = 0
+                    
+                    # Update counters
+                    self.interval_counter_label.config(text=str(self.interval_count))
+                    self.break_counter_label.config(text=str(self.break_count))
+                
+                # Update display
                 if current_time - last_update >= 0.1:
                     self.update_display()
                     last_update = current_time
             
-            time.sleep(0.05)  # 50ms sleep reduces CPU significantly
+            time.sleep(0.05)
     
     def update_display(self):
+        # Main clock (total runtime)
+        hrs_m = int(self.main_elapsed // 3600)
+        mins_m = int((self.main_elapsed % 3600) // 60)
+        secs_m = int(self.main_elapsed % 60)
+        ms_m = int((self.main_elapsed % 1) * 100)
+        main_time_str = f"{hrs_m:02d}:{mins_m:02d}:{secs_m:02d}:{ms_m:02d}"
+        self.main_clock_label.config(text=main_time_str)
+        
+        # Current interval/break timer
         hrs = int(self.elapsed // 3600)
         mins = int((self.elapsed % 3600) // 60)
         secs = int(self.elapsed % 60)
         ms = int((self.elapsed % 1) * 100)
-        
         time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}:{ms:02d}"
         self.timer_label.config(text=time_str)
         
-        time_to_next = self.next_alert - self.elapsed
-        if time_to_next > 0:
-            self.next_alert_label.config(text=f"Next alert in: {time_to_next:.1f}s")
+        # Time remaining
+        current_limit = self.break_duration if self.in_break else self.interval_duration
+        time_remaining = current_limit - self.elapsed
+        if time_remaining > 0:
+            mode_text = "break" if self.in_break else "work"
+            self.next_event_label.config(text=f"Time until {mode_text} ends: {time_remaining:.1f}s")
     
     def play_ringtone(self):
         if self.sound:
             try:
-                # Play without volume adjustment to save CPU
                 self.sound.play()
-                # Stop after duration
                 threading.Timer(self.ringtone_duration, lambda: self.sound.fadeout(100)).start()
-            except Exception as e:
-                pass  # Silent error handling to save memory
+            except:
+                pass
     
     def end_timer(self):
         self.running = False
         self.paused = False
         if self.sound:
-            self.sound.stop()  # Stop any playing ringtone
+            self.sound.stop()
         self.start_btn.config(state=tk.NORMAL)
         self.pause_btn.config(state=tk.DISABLED)
         self.resume_btn.config(state=tk.DISABLED)
         self.end_btn.config(state=tk.DISABLED)
         self.interval_entry.config(state=tk.NORMAL)
+        self.break_entry.config(state=tk.NORMAL)
         self.duration_entry.config(state=tk.NORMAL)
         self.browse_btn.config(state=tk.NORMAL)
-        self.next_alert_label.config(text="")
+        self.next_event_label.config(text="")
+        self.mode_label.config(text="READY", fg="black")
 
 if __name__ == "__main__":
     root = tk.Tk()
