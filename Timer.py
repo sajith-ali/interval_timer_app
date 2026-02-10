@@ -47,14 +47,14 @@ class IntervalTimer:
         # Main Clock Display (Total Runtime)
         main_clock_frame = tk.Frame(root)
         main_clock_frame.pack(pady=5)
-        tk.Label(main_clock_frame, text="Total Runtime:", font=("Arial", 10)).pack()
+        tk.Label(main_clock_frame, text="TOTAL RUNTIME:", font=("Arial", 10)).pack()
         self.main_clock_label = tk.Label(main_clock_frame, text="00:00:00:00", font=("Arial", 24, "bold"), fg="blue")
         self.main_clock_label.pack()
         
         # Timer Display (Interval/Break Timer)
         timer_frame = tk.Frame(root)
         timer_frame.pack(pady=5)
-        self.mode_label = tk.Label(timer_frame, text="WORK TIME", font=("Arial", 12, "bold"), fg="green")
+        self.mode_label = tk.Label(timer_frame, text="SESSION TIME", font=("Arial", 12, "bold"), fg="green")
         self.mode_label.pack()
         self.timer_label = tk.Label(timer_frame, text="00:00:00:00", font=("Arial", 32, "bold"))
         self.timer_label.pack()
@@ -63,7 +63,7 @@ class IntervalTimer:
         counter_frame = tk.Frame(root)
         counter_frame.pack(pady=10)
         
-        tk.Label(counter_frame, text="Work Intervals:", font=("Arial", 10)).grid(row=0, column=0, padx=10)
+        tk.Label(counter_frame, text="Sessions:", font=("Arial", 10)).grid(row=0, column=0, padx=10)
         self.interval_counter_label = tk.Label(counter_frame, text="0", font=("Arial", 16, "bold"), fg="green")
         self.interval_counter_label.grid(row=0, column=1, padx=10)
         
@@ -71,60 +71,64 @@ class IntervalTimer:
         self.break_counter_label = tk.Label(counter_frame, text="0", font=("Arial", 16, "bold"), fg="orange")
         self.break_counter_label.grid(row=0, column=3, padx=10)
         
-        # Settings Frame
-        settings_frame = tk.LabelFrame(root, text="Work Interval Settings", font=("Arial", 10, "bold"))
-        settings_frame.pack(pady=5, padx=20, fill="x")
+        # Settings Frame - Side by Side Layout
+        main_settings_frame = tk.Frame(root)
+        main_settings_frame.pack(pady=5, padx=20, fill="x")
+        
+        # Work Interval Settings (Left Side)
+        work_settings_frame = tk.LabelFrame(main_settings_frame, text="Session Interval Settings", font=("Arial", 10, "bold"))
+        work_settings_frame.pack(side=tk.LEFT, padx=5, fill="both", expand=True)
         
         # Interval Duration
-        interval_frame = tk.Frame(settings_frame)
+        interval_frame = tk.Frame(work_settings_frame)
         interval_frame.pack(pady=3)
-        tk.Label(interval_frame, text="Work Duration (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
+        tk.Label(interval_frame, text="Duration (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
         self.interval_entry = tk.Entry(interval_frame, width=8, font=("Arial", 9))
-        self.interval_entry.insert(0, "1500")  # 25 minutes default
+        self.interval_entry.insert(0, "1500")
         self.interval_entry.pack(side=tk.LEFT, padx=5)
         
         # Work Ringtone Duration
-        work_duration_frame = tk.Frame(settings_frame)
+        work_duration_frame = tk.Frame(work_settings_frame)
         work_duration_frame.pack(pady=3)
-        tk.Label(work_duration_frame, text="Ringtone Duration (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
+        tk.Label(work_duration_frame, text="Ringtone (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
         self.work_ringtone_duration_entry = tk.Entry(work_duration_frame, width=8, font=("Arial", 9))
         self.work_ringtone_duration_entry.insert(0, "3")
         self.work_ringtone_duration_entry.pack(side=tk.LEFT, padx=5)
         
         # Work Ringtone Selection
-        work_ringtone_frame = tk.Frame(settings_frame)
-        work_ringtone_frame.pack(pady=3)
-        self.work_ringtone_label = tk.Label(work_ringtone_frame, text="No work ringtone", font=("Arial", 9), fg="gray")
+        work_ringtone_frame = tk.Frame(work_settings_frame)
+        work_ringtone_frame.pack(pady=5)
+        self.work_ringtone_label = tk.Label(work_ringtone_frame, text="No work ringtone", font=("Arial", 8), fg="gray", wraplength=150)
         self.work_ringtone_label.pack()
-        self.work_browse_btn = tk.Button(work_ringtone_frame, text="Upload Work Ringtone", command=self.select_work_ringtone, font=("Arial", 9))
+        self.work_browse_btn = tk.Button(work_ringtone_frame, text="Upload Ringtone", command=self.select_work_ringtone, font=("Arial", 8))
         self.work_browse_btn.pack(pady=2)
         
-        # Break Settings Frame
-        break_settings_frame = tk.LabelFrame(root, text="Break Time Settings", font=("Arial", 10, "bold"))
-        break_settings_frame.pack(pady=5, padx=20, fill="x")
+        # Break Settings (Right Side)
+        break_settings_frame = tk.LabelFrame(main_settings_frame, text="Break Time Settings", font=("Arial", 10, "bold"))
+        break_settings_frame.pack(side=tk.RIGHT, padx=5, fill="both", expand=True)
         
         # Break Duration
         break_frame = tk.Frame(break_settings_frame)
         break_frame.pack(pady=3)
-        tk.Label(break_frame, text="Break Duration (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
+        tk.Label(break_frame, text="Duration (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
         self.break_entry = tk.Entry(break_frame, width=8, font=("Arial", 9))
-        self.break_entry.insert(0, "300")  # 5 minutes default
+        self.break_entry.insert(0, "300")
         self.break_entry.pack(side=tk.LEFT, padx=5)
         
         # Break Ringtone Duration
         break_duration_frame = tk.Frame(break_settings_frame)
         break_duration_frame.pack(pady=3)
-        tk.Label(break_duration_frame, text="Ringtone Duration (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
+        tk.Label(break_duration_frame, text="Ringtone (sec):", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
         self.break_ringtone_duration_entry = tk.Entry(break_duration_frame, width=8, font=("Arial", 9))
         self.break_ringtone_duration_entry.insert(0, "3")
         self.break_ringtone_duration_entry.pack(side=tk.LEFT, padx=5)
         
         # Break Ringtone Selection
         break_ringtone_frame = tk.Frame(break_settings_frame)
-        break_ringtone_frame.pack(pady=3)
-        self.break_ringtone_label = tk.Label(break_ringtone_frame, text="No break ringtone", font=("Arial", 9), fg="gray")
+        break_ringtone_frame.pack(pady=5)
+        self.break_ringtone_label = tk.Label(break_ringtone_frame, text="No break ringtone", font=("Arial", 8), fg="gray", wraplength=150)
         self.break_ringtone_label.pack()
-        self.break_browse_btn = tk.Button(break_ringtone_frame, text="Upload Break Ringtone", command=self.select_break_ringtone, font=("Arial", 9))
+        self.break_browse_btn = tk.Button(break_ringtone_frame, text="Upload Ringtone", command=self.select_break_ringtone, font=("Arial", 8))
         self.break_browse_btn.pack(pady=2)
         
         # Load saved ringtone if exists
