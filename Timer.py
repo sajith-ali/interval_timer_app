@@ -299,6 +299,11 @@ class IntervalTimer:
                     # Play ringtone
                     if current_time - self.last_alert_time > 0.5:
                         self.last_alert_time = current_time
+                        
+                        # Get ringtone duration for this phase
+                        ringtone_wait_time = self.break_ringtone_duration if self.in_break else self.work_ringtone_duration
+                        
+                        # Play ringtone in separate thread
                         threading.Thread(target=self.play_ringtone, daemon=True).start()
                         
                         # Bring window to front and restore if minimized
@@ -307,6 +312,16 @@ class IntervalTimer:
                         self.root.attributes('-topmost', True)
                         self.root.focus_force()  # Force focus
                         self.root.after(100, lambda: self.root.attributes('-topmost', False))
+                        
+                        # Wait for ringtone duration while keeping main clock running
+                        ringtone_end_time = current_time + ringtone_wait_time
+                        while time.time() < ringtone_end_time and self.running and not self.paused:
+                            # Update main clock during ringtone
+                            self.main_elapsed = time.time() - self.main_start_time - self.total_pause_duration
+                            self.update_main_clock()
+                            time.sleep(0.1)
+                        
+                        self.last_alert_time = time.time()
                     
                     # Switch between work and break
                     if self.in_break:
@@ -320,7 +335,7 @@ class IntervalTimer:
                         self.interval_count += 1
                         self.mode_label.config(text="BREAK TIME", fg="orange")
                     
-                    # Reset timer for next phase
+                    # Reset timer for next phase AFTER ringtone finished
                     self.start_time = time.time()
                     self.total_pause_duration = 0
                     self.elapsed = 0
@@ -337,20 +352,14 @@ class IntervalTimer:
             time.sleep(0.05)
     
     def update_display(self):
-        # Main clock (total runtime)
-        hrs_m = int(self.main_elapsed // 3600)
-        mins_m = int((self.main_elapsed % 3600) // 60)
-        secs_m = int(self.main_elapsed % 60)
-        ms_m = int((self.main_elapsed % 1) * 100)
-        main_time_str = f"{hrs_m:02d}:{mins_m:02d}:{secs_m:02d}:{ms_m:02d}"
-        self.main_clock_label.config(text=main_time_str)
+        # Main clock (total runtime) - with milliseconds
+        self.update_main_clock()
         
-        # Current interval/break timer
+        # Current interval/break timer - without milliseconds
         hrs = int(self.elapsed // 3600)
         mins = int((self.elapsed % 3600) // 60)
         secs = int(self.elapsed % 60)
-        ms = int((self.elapsed % 1) * 100)
-        time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}:{ms:02d}"
+        time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
         self.timer_label.config(text=time_str)
         
         # Time remaining
@@ -359,6 +368,15 @@ class IntervalTimer:
         if time_remaining > 0:
             mode_text = "break" if self.in_break else "work"
             self.next_event_label.config(text=f"Time until {mode_text} ends: {time_remaining:.1f}s")
+    
+    def update_main_clock(self):
+        # Main clock update (with milliseconds)
+        hrs_m = int(self.main_elapsed // 3600)
+        mins_m = int((self.main_elapsed % 3600) // 60)
+        secs_m = int(self.main_elapsed % 60)
+        ms_m = int((self.main_elapsed % 1) * 100)
+        main_time_str = f"{hrs_m:02d}:{mins_m:02d}:{secs_m:02d}:{ms_m:02d}"
+        self.main_clock_label.config(text=main_time_str)
     
     def play_ringtone(self):
         # Play the appropriate ringtone based on current mode
